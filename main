@@ -1,0 +1,352 @@
+extends Control
+
+# ボタンを配列で保持（インスペクターで紐付けるか、%UniqueNameで取得）
+@onready var buttons = [%ButtonA, %ButtonB, %ButtonC, %ButtonD]
+@onready var character: AnimatedSprite2D = %Character # もしAnimatedSprite2Dなら
+
+func _ready():
+	# 全ボタンの信号を一括で接続
+	for i in range(buttons.size()):
+		buttons[i].pressed.connect(_on_button_pressed.bind(i))
+	
+	display_quiz()
+
+# ABCDのいずれかが押された時に呼ばれる共通関数
+func _on_button_pressed(button_index: int):
+	var data = quiz_data[current_quiz_idx]
+
+	if answer_idx == data["correct"]:
+		# 正解：クイズのポイント（秒数）分だけバーを増やす
+		heart_bar.value += data["point"]
+		dialog_label.text = data["success_msg"]
+		character.play("happy")
+	else:
+		# 不正解：ペナルティとして少し時間を戻す（または増やさない）
+		heart_bar.value -= 10 
+		dialog_label.text = data["fail_msg"]
+		character.play("sad")
+	
+	# 勝敗判定
+	if heart_bar.value >= TARGET_TIME:
+		game_clear()
+		return
+		
+	await get_tree().create_timer(2.0).timeout
+	next_quiz()
+
+	# 連続クリック防止
+	answer_buttons_container.hide()
+	
+
+	
+	if button_index == data["correct"]:
+		# --- 正解の処理 ---
+		heart_bar.value += data["point"] # 設定された秒数を加算 
+		dialogue_label.text = data["success_msg"] # 正解セリフ 
+		
+		# 表情を変更（AnimatedSprite2Dの場合）
+		# もしSpriteFramesを切り替える構成なら以下のようにします
+		character.play("happy") 
+		# ※preloadした画像ファイルを直接使う場合は character.texture = data["face_happy"]
+		
+		# 演出：ちょっと嬉しくて浮き上がる
+		var tween = create_tween()
+		tween.tween_property(character, "position:y", character.position.y - 20, 0.1)
+		tween.set_trans(Tween.TRANS_SINE)
+		tween.tween_property(character, "position:y", character.position.y, 0.1)
+	else:
+		# --- 不正解の処理 ---
+		# ペナルティとして時間を少し引く
+		heart_bar.value -= 10
+		dialogue_label.text = data["fail_msg"] # 不正解セリフ 
+		character.play("sad")
+		
+		# 演出：ショックで左右に揺れる
+		var tween = create_tween()
+		tween.tween_property(character, "position:x", character.position.x + 10, 0.05)
+		tween.tween_property(character, "position:x", character.position.x - 10, 0.05)
+		tween.tween_property(character, "position:x", character.position.x, 0.05)
+
+	# 勝利判定：120秒（heart_bar.max_value）に達したか 
+	if heart_bar.value >= heart_bar.max_value:
+		game_clear()
+	else:
+		# 2秒待ってから次のクイズへ
+		await get_tree().create_timer(2.0).timeout
+		next_quiz()
+# 4択に対応したクイズデータ
+var quiz_data = [
+	{
+		"id": 1,
+		"text": "僕の誕生日とか、知ってますか...？",
+		"options": ["3/14", "3/13", "5/9", "2/18"],
+		"correct": 0,
+		"point": 5,
+		"success_msg": "正解、です...！ブエナビスタさん、ワンダーアキュートさんと同じなんです。",
+		"fail_msg": "ホワイトデーって、覚えてください...",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 2,
+		"text": "あの…僕の名前、シュヴァルグランですけど…。フランス語で…どういう意味か…分かりますか…？",
+		"options": ["偉大な馬", "速い風", "黄金の騎士", "勝利の星"],
+		"correct": 0,
+		"point": 10,
+		"success_msg": "あ…正解です…。偉大な馬になれるように…！",
+		"fail_msg": "あの…「偉大な馬」っていう意味なんです。覚えてくれたら…嬉しいです…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 3,
+		"text": "あの…僕の毛色…何色に見えますか…？",
+		"options": ["黒鹿毛", "鹿毛", "栗毛", "青毛"],
+		"correct": 2,
+		"point": 10,
+		"success_msg": "はい…栗毛です…。綺麗って言ってもらえることもあって…。",
+		"fail_msg": "あの…栗毛なんです…。少し…地味だったでしょうか…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 4,
+		"text": "野球選手だった…ある方と妙なご縁を感じるんですけど…。どなたか分かりますか…？",
+		"options": ["柳田悠岐", "佐々木主浩", "新庄剛志", "三浦大輔"],
+		"correct": 1,
+		"point": 10,
+		"success_msg": "あ…正解です…。佐々木主浩さん…。前世でなにかあったのかも…",
+		"fail_msg": "あの…佐々木主浩さんです…。いわゆる、大魔神…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 5,
+		"text": "僕の生まれた場所…どこか…分かりますか…？",
+		"options": ["ノーザンファーム", "社台ファーム", "岡田スタッド", "メジロ牧場"],
+		"correct": 0,
+		"point": 10,
+		"success_msg": "正解です…。北海道の…ノーザンファームで生まれました…。",
+		"fail_msg": "えっと…ノーザンファームというところです…。北海道の…安平町にあります…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 6,
+		"text": "あの…僕のお父さんの名前…教えてもらえますか…？",
+		"options": ["クロフネ", "ハーツクライ", "キングカメハメハ", "ブライアンズタイム"],
+		"correct": 1, "point": 15,
+		"success_msg": "あ…正解です…。僕の憧れそのもの、です。",
+		"fail_msg": "あの…ハーツクライです…。お父さんに…少しでも近づきたくて…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 7,
+		"text": "ヴィルシーナと、ヴィブロスは…僕とどんな関係でしょう…？",
+		"options": ["お母さんと叔母さん", "お姉ちゃんと妹", "従姉妹", "全く関係ない"],
+		"correct": 1, "point": 15,
+		"success_msg": "はい…お姉ちゃんと妹です…。二人とも…すごく強くて…",
+		"fail_msg": "あの…お姉ちゃんと妹なんです…。二人とも…GIを勝っているんですよ…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 8,
+		"text": "えっと…僕を産んでくれた…お母さんの名前…言えますか…？",
+		"options": ["パシフィカス", "スカーレットブーケ", "ダンシングキイ", "ハルーワスウィート"],
+		"correct": 3, "point": 20,
+		"success_msg": "ハルーワスウィート、です...尻尾が無い、少し珍しい個性のあるひとでした...。",
+		"fail_msg": "ハルーワスウィートといいます…とてもすごいお母さんです…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 9,
+		"text": "僕…全部で何戦…走ったか…覚えていますか…？",
+		"options": ["20戦", "25戦", "33戦", "37戦"],
+		"correct": 2, "point": 20,
+		"success_msg": "あ…正解です…。33戦…息長く走れました。",
+		"fail_msg": "えっと…33戦です…。気づいたら…そんなに走っていたんですね…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 10,
+		"text": "あの…僕が初めてGIを勝たせてもらったレース…分かりますか…？",
+		"options": ["有馬記念", "天皇賞・春", "ジャパンカップ", "宝塚記念"],
+		"correct": 2, "point": 25,
+		"success_msg": "正解です…。2017年のジャパンカップ…珍しく日本のウマだけの、日本の頂点を決めるのにふさわしいレースでした。",
+		"fail_msg": "あの…ジャパンカップです…。2017年の秋に…やっと手が届きました…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 11,
+		"text": "3歳の時…本当は春のクラシックに出たかったんですけど…何があったか…知っていますか…？",
+		"options": ["実力不足", "右肩の跛行", "風邪をひいた", "やる気が出なかった"],
+		"correct": 1, "point": 20,
+		"success_msg": "正解です…。右肩の跛行で…出走取り消しになってしまって…。",
+		"fail_msg": "あの…右肩の跛行（はこう）です…。あの時は…少し悲しかったです…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 12,
+		"text": "僕が初めて…重賞を勝たせてもらったレース…覚えていますか…？",
+		"options": ["アルゼンチン共和国杯", "阪神大賞典", "京都大賞典", "目黒記念"],
+		"correct": 1, "point": 20,
+		"success_msg": "あ…正解です…。2016年の阪神大賞典…。ここから…自信が持てました…。",
+		"fail_msg": "あの…阪神大賞典です…。2016年の春…初めて重賞で勝てました…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 13,
+		"text": "僕と何度も一緒に走った…最大のライバルといえば…誰でしょうか…？",
+		"options": ["キタサンブラック", "ゴールドシップ", "オルフェーヴル", "ディープインパクト"],
+		"correct": 0, "point": 15,
+		"success_msg": "はい…キタサンブラックさん…。本当に強くて……強くて。",
+		"fail_msg": "キタサンブラックさんです…。何度も…高い壁になってくれました…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 14,
+		"text": "あの…僕が稼いだ賞金…いくらくらいか…分かりますか…？",
+		"options": ["約5億円", "約8億円", "約11億円", "約15億円"],
+		"correct": 2, "point": 25,
+		"success_msg": "正解です…。11億円以上…。僕なりに…頑張れたかなって…。",
+		"fail_msg": "11億3497万1300円…だそうです…。お金持ち…？",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 15,
+		"text": "2019年に遠征したところ…ドバイと…もう一ヶ所はどこですか…？",
+		"options": ["アメリカ", "フランス", "香港", "イギリス"],
+		"correct": 3, "point": 20,
+		"success_msg": "はい…イギリスです。あの年のイギリスは妙に暑くて大変でしたね…。",
+		"fail_msg": "イギリスです…。伝統のあるレースを…走らせてもらいました…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 16,
+		"text": "イギリスのキングジョージで、僕が負けたすごい人の名前…分かりますか…？",
+		"options": ["エネイブル", "トレヴ", "アーモンドアイ", "ウオッカ"],
+		"correct": 0, "point": 25,
+		"success_msg": "正解です…。あの時、世界で一番強かった娘…",
+		"fail_msg": "エネイブルさんです…。世界には…すごい馬がたくさんいました。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 17,
+		"text": "僕が最後に走ったレース…どのレースか…覚えていますか…？",
+		"options": ["ジャパンカップ", "天皇賞・秋", "有馬記念", "ドバイシーマC"],
+		"correct": 2, "point": 20,
+		"success_msg": "正解です…。2019年の有馬記念…。最後…無事に走りきれました…。",
+		"fail_msg": "有馬記念です…。それが僕のラストランでした。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 18,
+		"text": "ドバイシーマクラシックの...僕の着順…覚えてますか？",
+		"options": ["4着", "2着", "3着", "1着"],
+		"correct": 1, "point": 25,
+		"success_msg": "正解です…！2着でした… 一歩、足りず…",
+		"fail_msg": "2着でした…。もう少しだったんですけど…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+	{
+		"id": 19,
+		"text": "僕の血統…何系と呼ばれているか…分かりますか…？",
+		"options": ["ミスタープロスペクター系", "ノーザンダンサー系", "ナスルーラ系", "サンデーサイレンス系"],
+		"correct": 3, "point": 15,
+		"success_msg": "はい…サンデーサイレンス系です…。すごい血筋ですよね…。",
+		"fail_msg": "あの…サンデーサイレンス系です…。誇らしい血統なんです…。",
+		"face_normal": preload("res://assets/シュヴァルグラン立ち帽子に手＞＜.gif"),
+		"face_happy": preload("res://assets/シュヴァルグラン立ち基本笑顔会話.gif"),
+		"face_sad": preload("res://assets/シュヴァルグラン立ち基本しょんぼり会話.gif")
+	},
+]
+var current_quiz_idx = 0
+var love_point = 50
+
+@onready var dialog_label = $UI/DialogLabel
+@onready var heart_bar = $UI/HeartBar
+
+
+const TARGET_TIME = 120.0 # 2分
+
+
+
+func next_quiz():
+	# インデックスを1進める
+	current_quiz_idx += 1
+	
+	# もし問題が最後まで行ったら、最初に戻す（ループさせる）
+	# これにより「2分間」を確実に埋めることができます
+	if current_quiz_idx >= quiz_data.size():
+		current_quiz_idx = 0
+		# 演出：2周目以降はシャッフルしても面白いです
+		# quiz_data.shuffle() 
+	
+	# 次の問題を表示する
+	display_quiz()
+
+func display_quiz():
+	# 現在のインデックスの問題データを取得
+	var data = quiz_data[current_quiz_idx]
+	
+	# UIの更新
+	dialog_label.text = data["text"]
+	
+	# ボタンのテキストを更新（4択）
+	for i in range(buttons.size()):
+		buttons[i].text = data["options"][i]
+	
+	# キャラを通常状態に戻す
+	character.play("default")
+	
+
+func game_clear():
+	dialog_label.text = "2分間あっと言う間だったね！また話そう？"
+	# クリア演出
+
+
+func _on_button_a_pressed() -> void:
+	pass # Replace with function body.
+
+
+func _on_button_b_pressed() -> void:
+	pass # Replace with function body.
+
+
+func _on_button_c_pressed() -> void:
+	pass # Replace with function body.
+
+
+func _on_button_d_pressed() -> void:
+	pass # Replace with function body.
